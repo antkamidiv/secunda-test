@@ -1,0 +1,9 @@
+**/__pycache__
+**/.venv
+**/.mypy_cache
+**/.ruff_cache
+Dockerfile*
+**/.dockerignore
+**/.git
+**/.gitignore
+README.md
