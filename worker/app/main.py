@@ -42,21 +42,16 @@ async def handle_payment(payment_info: PaymentModel, msg: RabbitMessage):
 
     await msg.ack()
 
-    # Deduplication
     try:
+        # Deduplication
         if not await payment.allowed():
             return
-    except PaymentError:
-        await retry(payment_info)  # Go to retry payment
-        return
-
-    # Processing
-    try:
+        # Processing
         await payment.process()
     except PaymentError:
         await retry(payment_info)  # Go to retry payment
-    else:
-        await payment.post_process()
+
+    await payment.post_process()
 
 
 async def retry(payment_info: PaymentModel):
