@@ -1,7 +1,7 @@
 import asyncio
 
 from faststream import AckPolicy, FastStream
-from faststream.rabbit import RabbitMessage
+from faststream.exceptions import RejectMessage
 
 from app.broker import bootstrap, broker, payment_exchange, payment_queue
 from app.cache import cache
@@ -30,11 +30,9 @@ async def on_shutdown_app():
     await asyncio.gather(pool.close(), cache.close(), session_manager.close(), return_exceptions=True)
 
 
-@broker.subscriber(exchange=payment_exchange, queue=payment_queue, ack_policy=AckPolicy.MANUAL)
-async def handle_payment(payment_info: PaymentModel, msg: RabbitMessage):
+@broker.subscriber(exchange=payment_exchange, queue=payment_queue, ack_policy=AckPolicy.NACK_ON_ERROR)
+async def handle_payment(payment_info: PaymentModel):
     payment = Payment(**payment_info.model_dump(exclude={"retry_queue"}))
-
-    await msg.ack()
 
     try:
         # Deduplication
@@ -45,9 +43,8 @@ async def handle_payment(payment_info: PaymentModel, msg: RabbitMessage):
     except PaymentError:
         #  Dead letter queue
         if payment_info.exhausted:
-            await msg.reject()
             await payment.set_failed()
-            return
+            raise RejectMessage()
         await retry(payment_info)  # Go to retry payment
     else:
         await payment.post_process()
