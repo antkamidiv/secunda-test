@@ -34,12 +34,6 @@ async def on_shutdown_app():
 async def handle_payment(payment_info: PaymentModel, msg: RabbitMessage):
     payment = Payment(**payment_info.model_dump(exclude={"retry_queue"}))
 
-    #  Dead letter queue
-    if payment_info.exhausted:
-        await msg.reject()
-        await payment.set_failed()
-        return
-
     await msg.ack()
 
     try:
@@ -49,9 +43,14 @@ async def handle_payment(payment_info: PaymentModel, msg: RabbitMessage):
         # Processing
         await payment.process()
     except PaymentError:
+        #  Dead letter queue
+        if payment_info.exhausted:
+            await msg.reject()
+            await payment.set_failed()
+            return
         await retry(payment_info)  # Go to retry payment
-
-    await payment.post_process()
+    else:
+        await payment.post_process()
 
 
 async def retry(payment_info: PaymentModel):
